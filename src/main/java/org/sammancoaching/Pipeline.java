@@ -1,9 +1,6 @@
 package org.sammancoaching;
 
-import org.sammancoaching.dependencies.Config;
-import org.sammancoaching.dependencies.Emailer;
-import org.sammancoaching.dependencies.Logger;
-import org.sammancoaching.dependencies.Project;
+import org.sammancoaching.dependencies.*;
 
 public class Pipeline {
     private final Config config;
@@ -18,12 +15,21 @@ public class Pipeline {
 
     public void run(Project project) {
         if (!runUnitTests(project)) {
-            sendEmail("Tests failed");
+            sendEmail("Unit tests failed");
             return;
         }
 
-        if (!deployProduction(project)) {
-            sendEmail("Deployment failed");
+        if (!deployTo(project, DeploymentEnvironment.STAGING)) {
+            sendEmail("Staging deployment failed");
+            return;
+        }
+
+        if (!runSmokeTests(project)) {
+            return; // O método runSmokeTests já cuida de enviar o e-mail específico de erro
+        }
+
+        if (!deployTo(project, DeploymentEnvironment.PRODUCTION)) {
+            sendEmail("Production deployment failed");
             return;
         }
 
@@ -45,14 +51,33 @@ public class Pipeline {
         }
     }
 
-    private boolean deployProduction(Project project) {
-        if (project.deploy().equals("success")) {
-            log.info("Deployment successful");
+    private boolean deployTo(Project project, DeploymentEnvironment env) {
+        if (project.deploy(env).equals("success")) {
+            log.info("Deployment to " + env + " successful");
             return true;
         } else {
-            log.error("Deployment failed");
+            log.error("Deployment to " + env + " failed");
             return false;
         }
+    }
+
+    private boolean runSmokeTests(Project project) {
+        TestStatus status = project.runSmokeTests();
+
+        if (status == TestStatus.NO_TESTS) {
+            log.error("No smoke tests");
+            sendEmail("Pipeline failed - no smoke tests");
+            return false;
+        }
+
+        if (status == TestStatus.FAILING_TESTS) {
+            log.error("Smoke tests failed");
+            sendEmail("Smoke tests failed");
+            return false;
+        }
+
+        log.info("Smoke tests passed");
+        return true;
     }
 
     private void sendEmail(String message) {
