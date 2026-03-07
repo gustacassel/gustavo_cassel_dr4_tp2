@@ -18,27 +18,11 @@ class PipelineTest {
         emailer = mock(Emailer.class);
         logger = mock(Logger.class);
         pipeline = new Pipeline(config, emailer, logger);
-
-        // Configuramos para sempre enviar email nos testes por padrão
         when(config.sendEmailSummary()).thenReturn(true);
     }
 
     @Test
-    void projectWithNoTests_deploysSuccessfully() {
-        Project project = Project.builder()
-                .setTestStatus(TestStatus.NO_TESTS)
-                .setDeploysSuccessfully(true)
-                .build();
-
-        pipeline.run(project);
-
-        verify(logger).info("No tests");
-        verify(logger).info("Deployment successful");
-        verify(emailer).send("Deployment completed successfully");
-    }
-
-    @Test
-    void projectWithFailingTests_doesNotDeploy() {
+    void projectWithFailingUnitTests_doesNotDeploy() {
         Project project = Project.builder()
                 .setTestStatus(TestStatus.FAILING_TESTS)
                 .build();
@@ -46,21 +30,37 @@ class PipelineTest {
         pipeline.run(project);
 
         verify(logger).error("Tests failed");
-        verify(emailer).send("Tests failed");
-        verify(logger, never()).info("Deployment successful");
+        verify(emailer).send("Unit tests failed");
     }
 
     @Test
-    void projectWithPassingTests_deployFails() {
+    void projectWithPassingUnitTests_butNoSmokeTests_failsPipeline() {
         Project project = Project.builder()
                 .setTestStatus(TestStatus.PASSING_TESTS)
-                .setDeploysSuccessfully(false)
+                .setDeploysSuccessfullyToStaging(true)
+                .setSmokeTestStatus(TestStatus.NO_TESTS)
                 .build();
 
         pipeline.run(project);
 
-        verify(logger).info("Tests passed");
-        verify(logger).error("Deployment failed");
-        verify(emailer).send("Deployment failed");
+        verify(emailer).send("Pipeline failed - no smoke tests");
+        verify(logger, never()).info("Deployment to PRODUCTION successful");
+    }
+
+    @Test
+    void projectWithPassingSmokeTests_deploysToProduction() {
+        Project project = Project.builder()
+                .setTestStatus(TestStatus.PASSING_TESTS)
+                .setDeploysSuccessfullyToStaging(true)
+                .setSmokeTestStatus(TestStatus.PASSING_TESTS)
+                .setDeploysSuccessfully(true)
+                .build();
+
+        pipeline.run(project);
+
+        verify(logger).info("Deployment to STAGING successful");
+        verify(logger).info("Smoke tests passed");
+        verify(logger).info("Deployment to PRODUCTION successful");
+        verify(emailer).send("Deployment completed successfully");
     }
 }
