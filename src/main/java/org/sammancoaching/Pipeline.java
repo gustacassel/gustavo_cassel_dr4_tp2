@@ -19,16 +19,14 @@ public class Pipeline {
             return;
         }
 
-        if (!deployTo(project, DeploymentEnvironment.STAGING)) {
+        if (!executeDeploy(project, DeploymentEnvironment.STAGING)) {
             sendEmail("Staging deployment failed");
             return;
         }
 
-        if (!runSmokeTests(project)) {
-            return; // O método runSmokeTests já cuida de enviar o e-mail específico de erro
-        }
+        if (!runSmokeTests(project)) return;
 
-        if (!deployTo(project, DeploymentEnvironment.PRODUCTION)) {
+        if (!executeDeploy(project, DeploymentEnvironment.PRODUCTION)) {
             sendEmail("Production deployment failed");
             return;
         }
@@ -42,50 +40,46 @@ public class Pipeline {
             return true;
         }
 
-        if (project.runTests().equals("success")) {
+        if (project.runTestsSuccessful()) {
             log.info("Tests passed");
             return true;
-        } else {
-            log.error("Tests failed");
-            return false;
         }
+
+        log.error("Tests failed");
+        return false;
     }
 
-    private boolean deployTo(Project project, DeploymentEnvironment env) {
-        if (project.deploy(env).equals("success")) {
+    private boolean executeDeploy(Project project, DeploymentEnvironment env) {
+        if (project.deploySuccessful(env)) {
             log.info("Deployment to " + env + " successful");
             return true;
-        } else {
-            log.error("Deployment to " + env + " failed");
-            return false;
         }
+
+        log.error("Deployment to " + env + " failed");
+        return false;
     }
 
     private boolean runSmokeTests(Project project) {
         TestStatus status = project.runSmokeTests();
 
-        if (status == TestStatus.NO_TESTS) {
-            log.error("No smoke tests");
-            sendEmail("Pipeline failed - no smoke tests");
-            return false;
+        if (status == TestStatus.PASSING_TESTS) {
+            log.info("Smoke tests passed");
+            return true;
         }
 
-        if (status == TestStatus.FAILING_TESTS) {
-            log.error("Smoke tests failed");
-            sendEmail("Smoke tests failed");
-            return false;
-        }
+        String errorMessage = (status == TestStatus.NO_TESTS)
+                ? "Pipeline failed - no smoke tests"
+                : "Smoke tests failed";
 
-        log.info("Smoke tests passed");
-        return true;
+        log.error(errorMessage);
+        sendEmail(errorMessage);
+        return false;
     }
 
     private void sendEmail(String message) {
         if (config.sendEmailSummary()) {
             log.info("Sending email");
             emailer.send(message);
-        } else {
-            log.info("Email disabled");
         }
     }
 }
