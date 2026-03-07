@@ -32,7 +32,7 @@ Além da limpeza, implementei o novo fluxo de deploy exigido:
 
 
 
-[Image of a CI/CD pipeline flow diagram]
+
 
 
 ## 🧪 Testes e Segurança
